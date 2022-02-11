@@ -7,13 +7,12 @@
 
 use alloc::{collections::VecDeque, sync::Arc};
 use core::{
-    mem::transmute,
     sync::atomic::{AtomicBool, Ordering},
     task::{Context, Waker},
 };
 use std::{
     sync::Mutex,
-    task::{RawWaker, RawWakerVTable, Wake},
+    task::{RawWaker, RawWakerVTable},
 };
 
 /// The shared state of the [`WakeupQueue`].
@@ -120,7 +119,7 @@ impl<T: Copy> WakeupQueue<T> {
 /// A handle which refers to a wakeup queue. The handles allows to notify the
 /// queue that a wakeup is required, and that after the wakeup the owner of the handle
 /// wants to be notified.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct WakeupHandle<T> {
     /// The queue this handle is referring to
     queue: Arc<Mutex<QueueState<T>>>,
@@ -129,7 +128,7 @@ pub struct WakeupHandle<T> {
     wakeup_handle_id: T,
     /// Whether a wakeup for this handle had already been queued since the last time
     /// the wakeup handler was called
-    wakeup_queued: Arc<AtomicBool>,
+    wakeup_queued: AtomicBool,
 }
 
 impl<T: Copy> WakeupHandle<T> {
@@ -138,7 +137,7 @@ impl<T: Copy> WakeupHandle<T> {
         Self {
             queue,
             wakeup_handle_id,
-            wakeup_queued: Arc::new(AtomicBool::new(false)),
+            wakeup_queued: AtomicBool::new(false),
         }
     }
 
@@ -182,7 +181,7 @@ impl<T: Copy> WakeupHandle<T> {
     fn raw_waker(data: &Self) -> RawWaker {
         let vtable = &RawWakerVTable::new(Self::clone, Self::wake, Self::wake, drop);
         unsafe {
-            let data = transmute::<&WakeupHandle<T>, *const ()>(data);
+            let data = &*(data as *const WakeupHandle<T> as *const ());
             RawWaker::new(data, vtable)
         }
     }
@@ -199,16 +198,6 @@ impl<T: Copy> WakeupHandle<T> {
             let data = &*(data as *const WakeupHandle<T>);
             data.wakeup();
         }
-    }
-}
-
-impl<T: Copy> Wake for WakeupHandle<T> {
-    fn wake(self: Arc<Self>) {
-        self.wakeup()
-    }
-
-    fn wake_by_ref(self: &Arc<Self>) {
-        self.wakeup()
     }
 }
 

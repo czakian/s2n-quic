@@ -91,13 +91,19 @@ impl tls::Session for Session {
                     context.on_handshake_complete()?;
                     self.handshake_complete = true;
                 }
+                println!("-------waking s2n");
+                context.waker().wake_by_ref();
                 Poll::Ready(Ok(()))
             }
-            Poll::Ready(Err(e)) => Poll::Ready(Err(e
-                .alert()
-                .map(CryptoError::new)
-                .unwrap_or(CryptoError::HANDSHAKE_FAILURE)
-                .into())),
+            Poll::Ready(Err(e)) => {
+                println!("-------waking s2n err");
+                context.waker().wake_by_ref();
+                Poll::Ready(Err(e
+                    .alert()
+                    .map(CryptoError::new)
+                    .unwrap_or(CryptoError::HANDSHAKE_FAILURE)
+                    .into()))
+            }
             Poll::Pending => Poll::Pending,
         }
     }
