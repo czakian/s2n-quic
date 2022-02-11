@@ -73,6 +73,11 @@ impl<T: Copy> QueueState<T> {
 
         core::mem::swap(&mut self.woken_connections, swap_queue);
     }
+
+    #[cfg(any(feature = "testing", test))]
+    fn inspect(&self) -> (usize, bool) {
+        (self.woken_connections.len(), self.wakeup_in_progress)
+    }
 }
 
 /// A queue which allows individual components to wakeups to a common blocked thread.
@@ -113,6 +118,11 @@ impl<T: Copy> WakeupQueue<T> {
             .lock()
             .expect("Locking can only fail if locks are poisoned");
         guard.poll_pending_wakeups(swap_queue, context)
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    fn state(&self) -> Arc<Mutex<QueueState<T>>> {
+        self.state.clone()
     }
 }
 
@@ -174,7 +184,7 @@ impl<T: Copy> WakeupHandle<T> {
         self.wakeup_queued.store(false, Ordering::SeqCst);
     }
 
-    pub fn my_waker(data: &Self) -> Waker {
+    pub fn waker(data: &Self) -> Waker {
         unsafe { Waker::from_raw(Self::raw_waker(data)) }
     }
 
@@ -215,6 +225,81 @@ mod tests {
             )*
             value
         }}
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    fn check_state(state: &Arc<Mutex<QueueState<u32>>>, len: usize, wakeup_in_progress: bool) {
+        let state = state
+            .lock()
+            .expect("Locking can only fail if locks are poisoned");
+        assert_eq!(state.inspect(), (len, wakeup_in_progress));
+    }
+
+    #[cfg(any(feature = "testing", test))]
+    #[test]
+    fn waker() {
+        let queue = WakeupQueue::new();
+        let state = queue.state();
+        check_state(&state, 0, false);
+
+        let mut handle1 = queue.create_wakeup_handle(1u32);
+        let mut handle2 = queue.create_wakeup_handle(2u32);
+        let waker1 = WakeupHandle::waker(&handle1);
+        let waker2 = WakeupHandle::waker(&handle2);
+
+        // wake_by_ref
+        waker1.wake_by_ref();
+        check_state(&state, 1, true);
+        waker1.wake_by_ref();
+        check_state(&state, 1, true);
+
+        waker2.wake_by_ref();
+        check_state(&state, 2, true);
+
+        // check queued wakeups and reset state
+        {
+            let mut state = state
+                .lock()
+                .expect("Locking can only fail if locks are poisoned");
+            let (waker, _counter) = new_count_waker();
+            let mut pending = VecDeque::new();
+            state.poll_pending_wakeups(&mut pending, &Context::from_waker(&waker));
+            assert_eq!(pending.len(), 2);
+
+            handle1.wakeup_handled();
+            handle2.wakeup_handled();
+        }
+        check_state(&state, 0, false);
+
+        // clone wake
+        waker1.clone().wake();
+        check_state(&state, 1, true);
+        waker2.clone().wake();
+        check_state(&state, 2, true);
+
+        // drop one handle
+        drop(waker1.clone());
+        drop(waker2.clone());
+
+        // call wake on another handle
+        waker1.wake();
+        check_state(&state, 2, true);
+        waker2.wake();
+        check_state(&state, 2, true);
+
+        // check queued wakeups and reset state
+        {
+            let mut state = state
+                .lock()
+                .expect("Locking can only fail if locks are poisoned");
+            let (waker, _counter) = new_count_waker();
+            let mut pending = VecDeque::new();
+            state.poll_pending_wakeups(&mut pending, &Context::from_waker(&waker));
+            assert_eq!(pending.len(), 2);
+
+            handle1.wakeup_handled();
+            handle2.wakeup_handled();
+        }
     }
 
     #[test]

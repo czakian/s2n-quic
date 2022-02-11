@@ -268,7 +268,7 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), connection::Error> {
         // let waker = Waker::from(Arc::new(self.wakeup_handle.clone()));
-        let waker = WakeupHandle::my_waker(&self.wakeup_handle);
+        let waker = WakeupHandle::waker(&self.wakeup_handle);
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
         let space_manager = &mut self.space_manager;
 
