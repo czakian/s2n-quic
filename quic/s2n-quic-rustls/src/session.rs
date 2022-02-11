@@ -147,6 +147,8 @@ impl Session {
         }
 
         if self.emitted_handshake_complete {
+            println!("-------waking");
+            context.waker().wake_by_ref();
             Poll::Ready(Ok(()))
         } else {
             Poll::Pending

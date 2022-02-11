@@ -7,10 +7,14 @@
 
 use alloc::{collections::VecDeque, sync::Arc};
 use core::{
+    mem::transmute,
     sync::atomic::{AtomicBool, Ordering},
     task::{Context, Waker},
 };
-use std::{sync::Mutex, task::Wake};
+use std::{
+    sync::Mutex,
+    task::{RawWaker, RawWakerVTable, Wake},
+};
 
 /// The shared state of the [`WakeupQueue`].
 #[derive(Debug)]
@@ -169,6 +173,32 @@ impl<T: Copy> WakeupHandle<T> {
     /// Further calls to [`wakeup`] will be queued again.
     pub fn wakeup_handled(&mut self) {
         self.wakeup_queued.store(false, Ordering::SeqCst);
+    }
+
+    pub fn my_waker(data: &Self) -> Waker {
+        unsafe { Waker::from_raw(Self::raw_waker(data)) }
+    }
+
+    fn raw_waker(data: &Self) -> RawWaker {
+        let vtable = &RawWakerVTable::new(Self::clone, Self::wake, Self::wake, drop);
+        unsafe {
+            let data = transmute::<&WakeupHandle<T>, *const ()>(data);
+            RawWaker::new(data, vtable)
+        }
+    }
+
+    fn clone(data: *const ()) -> RawWaker {
+        unsafe {
+            let data = &*(data as *const WakeupHandle<T>);
+            Self::raw_waker(data)
+        }
+    }
+
+    fn wake(data: *const ()) {
+        unsafe {
+            let data = &*(data as *const WakeupHandle<T>);
+            data.wakeup();
+        }
     }
 }
 

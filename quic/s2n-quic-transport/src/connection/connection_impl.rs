@@ -24,11 +24,10 @@ use crate::{
     transmission::interest::Provider,
     wakeup_queue::WakeupHandle,
 };
-use alloc::sync::Arc;
 use bytes::Bytes;
 use core::{
     fmt,
-    task::{Context, Poll, Waker},
+    task::{Context, Poll},
     time::Duration,
 };
 use s2n_quic_core::{
@@ -172,7 +171,7 @@ pub struct ConnectionImpl<Config: endpoint::Config> {
     /// Manages all of the different packet spaces and their respective components
     space_manager: PacketSpaceManager<Config>,
     /// Holds the handle for waking up the endpoint from a application call
-    wakeup_handle: WakeupHandle<InternalConnectionId>,
+    wakeup_handle: Box<WakeupHandle<InternalConnectionId>>,
     event_context: EventContext<Config>,
 }
 
@@ -268,7 +267,8 @@ impl<Config: endpoint::Config> ConnectionImpl<Config> {
         timestamp: Timestamp,
         subscriber: &mut Config::EventSubscriber,
     ) -> Result<(), connection::Error> {
-        let waker = Waker::from(Arc::new(self.wakeup_handle.clone()));
+        // let waker = Waker::from(Arc::new(self.wakeup_handle.clone()));
+        let waker = WakeupHandle::my_waker(&self.wakeup_handle);
         let mut publisher = self.event_context.publisher(timestamp, subscriber);
         let space_manager = &mut self.space_manager;
 
@@ -604,7 +604,7 @@ impl<Config: endpoint::Config> connection::Trait for ConnectionImpl<Config> {
             error: Ok(()),
             close_sender: CloseSender::default(),
             space_manager: parameters.space_manager,
-            wakeup_handle: parameters.wakeup_handle,
+            wakeup_handle: Box::new(parameters.wakeup_handle),
             event_context,
         };
 
