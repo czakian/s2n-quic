@@ -37,7 +37,7 @@ impl Scenario {
     }
 
     pub fn write<W: std::io::Write>(&self, out: &mut W) -> std::io::Result<()> {
-        serde_json::to_writer_pretty(out, self)?;
+        serde_json::to_writer(out, self)?;
         Ok(())
     }
 }

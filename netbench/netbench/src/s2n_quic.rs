@@ -164,6 +164,7 @@ impl super::Connection for Connection {
 
             if stream.rx.is_none() {
                 entry.remove();
+                eprintln!("remove");
             }
         }
 
@@ -184,6 +185,7 @@ impl super::Connection for Connection {
 
             if stream.tx.is_none() {
                 entry.remove();
+                eprintln!("remove");
             }
         }
 
